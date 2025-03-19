@@ -1,0 +1,168 @@
+#!/bin/bash
+
+read_xml() {
+    echo "Introduceti numele fisierului XML:"
+    read file
+
+    if [[ ! -f "$file" ]]; then
+        echo "Fișierul nu există."
+        exit 1
+    fi
+
+    xmlstarlet val "$file" > /dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+        echo "Fișierul XML nu este valid."
+        exit 1
+    fi
+
+    echo "Conținutul fișierului XML:"
+    xmlstarlet fo "$file"
+}
+
+add_tag() {
+    echo "Introduceti numele tag-ului pe care doriti sa-l adaugati:"
+    read tag_name
+
+    if [[ -z "$tag_name" ]]; then
+        echo "Eroare: Nu ați introdus un nume pentru tag."
+        return
+    fi
+
+    echo "Introduceti atributele pentru tag-ul $tag_name (exemplu: id=\"bk103\") sau apasati Enter daca nu doriti atribute:"
+    read tag_attributes
+    echo "Introduceti valoarea pentru tag-ul $tag_name:"
+    read tag_value
+
+    if [[ -z "$tag_value" ]]; then
+        echo "Eroare: Nu ați introdus nicio valoare pentru tag-ul $tag_name."
+        return
+    fi
+
+    echo "Introduceti numele fisierului XML:"
+    read file
+
+    if [[ ! -f "$file" ]]; then
+        echo "Fișierul nu există."
+        exit 1
+    fi
+
+    xmlstarlet val "$file" > /dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+        echo "Fișierul XML nu este valid."
+        exit 1
+    fi
+
+    if [[ -n "$tag_attributes" ]]; then
+        tag_open="<$tag_name $tag_attributes>"
+    else
+        tag_open="<$tag_name>"
+    fi
+    tag_close="</$tag_name>"
+
+    temp_file="$file.tmp"
+    xmlstarlet ed \
+        -s "/*[1]" -t elem -n "temp_tag" -v "$tag_value" "$file" > "$temp_file"
+
+    sed -i "s|<temp_tag>|$tag_open|g" "$temp_file"
+    sed -i "s|</temp_tag>|$tag_close|g" "$temp_file"
+
+    #Convertire caractere speciale
+    sed -i 's|&lt;|<|g' "$temp_file"
+    sed -i 's|&gt;|>|g' "$temp_file"
+
+    mv "$temp_file" "$file"
+
+    echo "Tag-ul $tag_name a fost adăugat."
+}
+
+
+
+delete_tag() {
+    echo "Introduceti numele tag-ului pe care doriti sa-l stergeti:"
+    read tag_name
+    echo "Introduceti atributele pentru tag-ul $tag_name (dacă există, de exemplu: id=\"bk1003\") sau apasati Enter daca nu există atribute:"
+    read tag_attributes
+
+    echo "Doriți să ștergeți un tag specific din interiorul acestuia? Introduceți numele tag-ului interior sau apăsați Enter pentru a șterge întregul tag $tag_name:"
+    read inner_tag
+
+    echo "Introduceti numele fisierului XML:"
+    read file
+
+    if [[ ! -f "$file" ]]; then
+        echo "Fișierul nu există."
+        exit 1
+    fi
+
+    xmlstarlet val "$file" > /dev/null 2>&1
+    if [[ $? -ne 0 ]]; then
+        echo "Fișierul XML nu este valid."
+        exit 1
+    fi
+
+    existing_tag=$(xmlstarlet sel -t -v "//$tag_name" "$file")
+    if [[ -z "$existing_tag" ]]; then
+        echo "Eroare: Tag-ul $tag_name nu există în fișier."
+        return
+    fi
+
+    if [[ -n "$tag_attributes" ]]; then
+        existing_attribute=$(xmlstarlet sel -t -v "//$tag_name[@$tag_attributes]" "$file")
+        if [[ -z "$existing_attribute" ]]; then
+            echo "Eroare: Tag-ul $tag_name cu atributul $tag_attributes nu există în fișier."
+            return
+        fi
+    fi
+
+    if [[ -n "$inner_tag" ]]; then
+        inner_tag_exists=$(xmlstarlet sel -t -v "//$tag_name/$inner_tag" "$file")
+        if [[ -z "$inner_tag_exists" ]]; then
+            echo "Eroare: Tag-ul interior $inner_tag nu există în $tag_name."
+            return
+        fi
+    fi
+
+    if [[ -n "$inner_tag" ]]; then
+        if [[ -n "$tag_attributes" ]]; then
+            xmlstarlet ed -d "//$tag_name[@$tag_attributes]/$inner_tag" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+        else
+            xmlstarlet ed -d "//$tag_name/$inner_tag" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+        fi
+        echo "Tag-ul interior $inner_tag din $tag_name a fost șters."
+    else
+        if [[ -n "$tag_attributes" ]]; then
+            xmlstarlet ed -d "//$tag_name[@$tag_attributes]" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+        else
+            xmlstarlet ed -d "//$tag_name" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+        fi
+        echo "Tag-ul $tag_name a fost șters."
+    fi
+}
+
+echo "Alegeți o opțiune:"
+echo "1. Citește fișierul XML"
+echo "2. Adaugă un tag"
+echo "3. Șterge un tag"
+echo "4. Ieși"
+
+read option
+
+case $option in
+    1)
+        read_xml
+        ;;
+    2)
+        add_tag
+        ;;
+    3)
+        delete_tag
+        ;;
+    4)
+        echo "Ieșire..."
+        exit 0
+        ;;
+    *)
+        echo "Opțiune invalidă."
+        ;;
+esac
+
